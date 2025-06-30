@@ -5,9 +5,6 @@
   "main": "index.js",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.5",
-    "formidable": "^2.1.1",
-    "dependencies": {
-  "@supabase/supabase-js": "^2.39.5",
-  "busboy": "^1.6.0"
-}
+    "busboy": "^1.6.0"
+  }
 }
