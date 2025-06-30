@@ -1,61 +1,79 @@
 import express from "express";
-import Busboy from "busboy";
+import Busboy  from "busboy";
 import { createClient } from "@supabase/supabase-js";
-import path from "node:path";
-import fs from "node:fs";
 
 const app = express();
 
-// --- Supabase client --------------------------------------------------
+// ------------------------------------------------------------------
+//  Supabase client  (env vars MUST be set in Render dashboard)
+// ------------------------------------------------------------------
 const supabase = createClient(
-  process.env.SUPABASE_URL,         // e.g. https://zzoovcdpgpggiyzvsnig.supabase.co
-  process.env.SUPABASE_SERVICE_KEY  // service-role key
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_KEY
 );
 
-// ---------------------------------------------------------------------
-// POST  /upload   ← set Ampeco “location” to this URL
-// ---------------------------------------------------------------------
+console.log("🚀  Ampeco proxy booted — bucket 'diagnostics'");
+
+// ------------------------------------------------------------------
+//  POST  /upload  – Ampeco points here
+// ------------------------------------------------------------------
 app.post("/upload", (req, res) => {
+  console.log("📥  request", {
+    "content-type": req.headers["content-type"],
+    bytes: req.headers["content-length"]
+  });
+
   const bb = Busboy({
     headers: req.headers,
-    limits: { fileSize: 100 * 1024 * 1024 }   // 100 MB max zip size
+    limits: { fileSize: 100 * 1024 * 1024 }  // 100 MB
   });
 
-  let tmpPath = "";
-  let origName = "";
+  let fileName   = "";
+  let fileBuffer = null;
 
-  // save the incoming file to /tmp first
   bb.on("file", (_, file, info) => {
-    origName = info.filename || `diag-${Date.now()}.zip`;
-    tmpPath  = path.join("/tmp", origName);
-    file.pipe(fs.createWriteStream(tmpPath));
+    fileName = info.filename || `diag-${Date.now()}.zip`;
+    const chunks = [];
+
+    file.on("data", chunk => chunks.push(chunk));
+    file.on("end",  ()    => {
+      fileBuffer = Buffer.concat(chunks);
+      console.log(`🗂️  buffered ${fileBuffer.length/1024} KB → ${fileName}`);
+    });
   });
 
-  // after streaming to disk, read into a Buffer and push to Supabase
   bb.on("finish", async () => {
-    if (!tmpPath) return res.status(400).json({ error: "no file" });
+    if (!fileBuffer) {
+      console.error("❌  no file in form-data");
+      return res.status(400).json({ error: "no file" });
+    }
 
-    const dataBuf = fs.readFileSync(tmpPath);              // ← buffer, not stream
+    try {
+      console.log("↗️   uploading to Supabase …");
+      const { error } = await supabase
+        .storage.from("diagnostics")           // bucket
+        .upload(fileName, fileBuffer, { contentType: "application/zip" });
 
-    const { error } = await supabase
-      .storage
-      .from("diagnostics")                                 // bucket name
-      .upload(origName, dataBuf, { contentType: "application/zip" });
+      if (error) {
+        console.error("❌  Supabase:", error.message);
+        return res.status(500).json({ error: "Supabase upload failed", detail: error.message });
+      }
 
-    if (error) return res.status(500).json({ error: "Supabase upload failed" });
+      const { data } = supabase
+        .storage.from("diagnostics")
+        .getPublicUrl(fileName);
 
-    const { data } = supabase
-      .storage
-      .from("diagnostics")
-      .getPublicUrl(origName);
-
-    console.log("✓ uploaded", data.publicUrl);
-    res.json({ success: true, url: data.publicUrl });
+      console.log("✅  uploaded", data.publicUrl);
+      res.json({ success: true, url: data.publicUrl });
+    } catch (err) {
+      console.error("❌  unexpected:", err);
+      res.status(500).json({ error: "server crash" });
+    }
   });
 
   req.pipe(bb);
 });
 
-// ---------------------------------------------------------------------
+// ------------------------------------------------------------------
 const PORT = process.env.PORT || 8080;
-app.listen(PORT, () => console.log("proxy listening on", PORT));
+app.listen(PORT, () => console.log("🔊  listening on", PORT));
