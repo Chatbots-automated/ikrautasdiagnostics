@@ -8,10 +8,10 @@ export const config = {
   },
 };
 
-// 🔐 Load your env vars from Vercel dashboard
+// 🔐 Hardcoded Supabase credentials (as requested)
 const supabase = createClient(
-  process.env.SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  'https://zzoovcdpgpggiyzvsnig.supabase.co',
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp6b292Y2RwZ3BnZ2l5enZzbmlnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc1MTI5NjE2NSwiZXhwIjoyMDY2ODcyMTY1fQ.9U5MihcPJ5Umk8OnHZ9Qqb2m88iudpsu4QCXscI-8ns'
 );
 
 export default async function handler(req, res) {
